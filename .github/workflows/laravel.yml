@@ -1,4 +1,4 @@
-name: Deploy Laravel to FTP
+name: Deploy via SFTP
 
 on:
   push:
@@ -6,19 +6,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  ftp-deploy:
+  sftp-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: SFTP Deploy to Server
+        uses: appleboy/scp-action@v0.1.7
         with:
-          server: ftp.comercializadoraoasis.com
-          username: comercializadoraoasis.com
-          password: Av(@}uY#5kv2
-          server-dir: /api/  # Carpeta de destino en el servidor FTP
-          local-dir: ./      # Carpeta local a subir (todo el repo)
-
+          host: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          port: 22
+          source: "."  # carpeta local a subir
+          target: "/ruta/remota/api"  # ruta en el servidor
+          rm: false  # no borrar archivos previos
