@@ -16,9 +16,9 @@ jobs:
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ftp.comercializadoraoasis.com
+          username: comercializadoraoasis.com
+          password: Av(@}uY#5kv2
           server-dir: /api/  # Carpeta de destino en el servidor FTP
           local-dir: ./      # Carpeta local a subir (todo el repo)
 
