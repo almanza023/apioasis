@@ -18,7 +18,7 @@ jobs:
           server: ftp.comercializadoraoasis.com
           username: comercializadoraoasis.com
           password: Av(@}uY#5kv2
-          protocol: sftp
+          protocol: ftp
           port: 21
           local-dir: ./
           server-dir: /api/
