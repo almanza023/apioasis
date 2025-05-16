@@ -1,25 +1,25 @@
-name: Deploy via SFTP
+name: Deploy via FTP
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main # Cambia a master si tu rama principal se llama así
 
 jobs:
-  sftp-deploy:
+  ftp-deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: SFTP Deploy to Server
-        uses: appleboy/scp-action@v0.1.7
+      - name: Deploy to FTP server
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          host: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          port: 22
-          source: "."  # carpeta local a subir
-          target: "/ruta/remota/api"  # ruta en el servidor
-          rm: false  # no borrar archivos previos
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          local-dir: ./
+          server-dir: /api/
+          dangerous-clean-slate: false
