@@ -15,10 +15,10 @@ jobs:
       - name: Deploy to FTP server
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
+          server: ftp.comercializadoraoasis.com
+          username: comercializadoraoasis.com
+          password: Av(@}uY#5kv2
+          protocol: sftp
           port: 21
           local-dir: ./
           server-dir: /api/
