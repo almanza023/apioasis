@@ -8,8 +8,11 @@ use App\Models\CarteraCompra;
 use App\Models\Compra;
 use App\Models\DetalleCompra;
 use App\Models\MovimientoInventario;
+use App\Models\Operacion;
 use App\Models\Producto;
 use App\Models\ProductoBodega;
+use App\Models\ProductoStock;
+use App\Models\Venta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use JWTAuth;
@@ -213,14 +216,26 @@ class CompraController extends Controller
                 $detalles=DetalleCompra::getDetalleByCompra($objeto->id);
                 if(count($detalles)>0){
                     foreach($detalles as $detalle) {
-                        // Crear movimiento de inventario
+                        //Verificar los productos pendientes de Stock
+                        $productoStock=ProductoStock::where('estado',1)
+                        ->where('producto_id', $detalle->producto_id)
+                            ->get();
+                            foreach($productoStock as $stock){
+                                $stock->update(['estado'=>0]);
+                                $venta=Venta::find($stock->venta_id);
+                                if($venta){
+                                    $venta->update(['estado'=>1]);
+                                }
+                            }
+                       // Crear movimiento de inventario
                         // Obtener el último movimiento del producto
                         $ultimoMovimiento = MovimientoInventario::where('producto_id', $detalle->producto_id)
                             ->orderBy('id', 'desc')
                             ->first();
 
                         $saldoAnterior = $ultimoMovimiento ? $ultimoMovimiento->saldo : 0;
-                        $nuevoSaldo = $saldoAnterior + $detalle->total_cantidad;
+                        $nuevoSaldo = + $detalle->total_cantidad + ($saldoAnterior) ;
+
 
                         MovimientoInventario::create([
                             'producto_id' => $detalle->producto_id,
@@ -240,7 +255,7 @@ class CompraController extends Controller
                             $producto->precio=$detalle->precio_venta;
                         }
 
-                        $producto->stock_actual += $detalle->total_cantidad;
+                        $producto->stock_actual = $nuevoSaldo;
                         $producto->save();
 
                         $productoBodegas=ProductoBodega::updateCantidadByProductoAndBodega($producto->id, $objeto->bodega_id, $detalle->total_cantidad,2);
@@ -257,6 +272,14 @@ class CompraController extends Controller
 
                     }
                 }
+                //Registrar la Operacion
+                $operacion=Operacion::updateOrCreate(
+                    ['tipo_operacion_id' => 2, 'numero' => $objeto->id],
+                    [
+                        'fecha' => $objeto->fecha,
+                        'estado' => 1,
+                    ]
+                );
 
                 DB::commit();
             } catch (\Exception $e) {

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cartera;
+use App\Models\Operacion;
 use App\Models\Pago;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
@@ -64,10 +66,10 @@ class CarteraController extends Controller
             // Creamos el gasto en la BD
 
             $cartera = Cartera::find($request->cartera_id);
-
-            $gasto = Pago::create([
+            $fecha = Carbon::parse($request->fecha)->format('Y-m-d');
+            $pago = Pago::create([
                 'cartera_id' => $request->cartera_id,
-                'fecha' => $request->fecha,
+                'fecha' => $fecha,
                 'tipo_pago_id' => $request->tipo_pago_id,
                 'valor' => $request->valor,
                 'observaciones' => $request->observaciones,
@@ -84,9 +86,18 @@ class CarteraController extends Controller
                 'total' => $request->valor,
                 'saldo' => $cartera->saldo,
                 'abono' => $request->valor,
-                'fecha' => $request->fecha,
+                'fecha' => $fecha,
                 'estado' => 1,
             ]);
+
+            //Registrar la Operacion
+            $operacion=Operacion::updateOrCreate(
+                ['tipo_operacion_id' => 3, 'numero' => $pago->id],
+                [
+                    'fecha' => $fecha,
+                    'estado' => 1,
+                ]
+            );
 
         });
          // Respuesta en caso de que todo vaya bien

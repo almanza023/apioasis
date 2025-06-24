@@ -50,7 +50,6 @@ class ProductoController extends Controller
             'categoria_id',
             'user_id',
             'proveedor_id',
-            'ubicacion_id',
             'codigo',
             'nombre',
             'descripcion',
@@ -65,12 +64,10 @@ class ProductoController extends Controller
         $validator = Validator::make($data, [
             'categoria_id' => 'required|exists:categorias,id',
             'proveedor_id' => 'required|exists:proveedores,id',
-            'ubicacion_id' => 'required|exists:ubicaciones,id',
             'nombre' => 'required|max:200|string',
             //'precio' => 'required|numeric',
             'user_id' => 'required',
             'stock_actual' => 'required',
-            //'imagen' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Validación de imagen
         ]);
 
         // Si falla la validación
@@ -83,7 +80,6 @@ class ProductoController extends Controller
             $producto = $this->model::create([
                 'categoria_id' => $request->categoria_id,
                 'proveedor_id' => $request->proveedor_id,
-                'ubicacion_id' => $request->ubicacion_id,
                 'nombre' => strtoupper($request->nombre),
                 'laboratorio' => strtoupper($request->laboratorio),
                 'descripcion' => $request->descripcion,
@@ -201,7 +197,6 @@ class ProductoController extends Controller
         $validator = Validator::make($data, [
             'categoria_id' => 'required|exists:categorias,id',
             'proveedor_id' => 'required|exists:proveedores,id',
-            'ubicacion_id' => 'required|exists:ubicaciones,id',
             'nombre' => 'required|max:200|string',
             'precio' => 'required|numeric',
             'stock_actual' => 'required|numeric',
@@ -219,7 +214,6 @@ class ProductoController extends Controller
                 $producto->update([
                     'categoria_id' => $request->categoria_id,
                     'proveedor_id' => $request->proveedor_id,
-                    'ubicacion_id' => $request->ubicacion_id,
                     'nombre' => strtoupper($request->nombre),
                     'descripcion' => $request->descripcion,
                     'codigo' => $request->codigo,
@@ -265,7 +259,6 @@ class ProductoController extends Controller
             $producto->update([
                 'categoria_id' => $request->categoria_id,
                 'proveedor_id' => $request->proveedor_id,
-                'ubicacion_id' => $request->ubicacion_id,
                 'nombre' => strtoupper($request->nombre),
                 'descripcion' => $request->descripcion,
                 'codigo' => $request->codigo,
@@ -566,7 +559,6 @@ class ProductoController extends Controller
                     'user_id' => $request->user_id,
                     'categoria_id' => 1,
                     'proveedor_id' => 1,
-                    'ubicacion_id' => 42,
                     'nombre' => strtoupper($productoData['nombre']),
                     'laboratorio' => strtoupper($productoData['laboratorio'] ?? ''),
                     'descripcion' => $presentacion,
@@ -632,6 +624,91 @@ class ProductoController extends Controller
                 'code' => 500,
                 'isSuccess' => false,
                 'message' => 'Error al importar productos',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateAjusteImport(Request $request)
+    {
+        // Validamos que recibimos un array de productos
+        if (!$request->has('productos') || !is_array($request->productos)) {
+            return response()->json(['error' => 'Debe proporcionar un array de productos'], 400);
+        }
+
+        // Inicializamos contador de productos procesados
+        $procesados = 0;
+        $errores = [];
+        DB::beginTransaction();
+        // Procesamos cada producto del array
+        try {
+            foreach ($request->productos as $productoData) {
+
+                // Verificamos datos mínimos requeridos
+                if (empty($productoData['id']) || empty($productoData['nuevo_stock'])) {
+                    $errores[] = "Producto sin cantidad: " . $productoData['nombre'];
+                    continue;
+                }
+                $producto=$this->model::find($productoData['id']);
+                if(isset($productoData['nuevo_stock'])){
+                $saldo=$producto->stock_actual;
+                $producto->stock_actual=$productoData['nuevo_stock'];
+                $producto->save();
+
+
+                // Registramos movimiento de inventario si hay stock
+                if (($productoData['nuevo_stock'] ?? 0) > 0) {
+                    MovimientoInventario::create([
+                        'producto_id' => $producto->id,
+                        'user_id' => $request->user_id,
+                        'tipo' => 1, // ENTRADA
+                        'cantidad' => $productoData['nuevo_stock'],
+                        'precio_venta' => $producto->precio?? 0,
+                        'saldo' => $saldo,
+                        'fecha' => now(),
+                        'descripcion' => "AJUSTE MASIVO"
+                    ]);
+                }
+
+                    $bodega_id=5;
+                    ProductoBodega::where('producto_id', $producto->id)
+                        ->where('bodega_id', $bodega_id)
+                        ->update([
+                            'cantidad' => $productoData['nuevo_stock'],
+                            'fecha' => now()
+                        ]);
+                    $descripcion = "ENTRADA A BODEGA " . $bodega_id;
+                    $cantidad = $productoData['nuevo_stock'];
+                    MovimientoInventario::create([
+                        'producto_id' => $producto->id,
+                        'user_id' => $request->user_id,
+                        'tipo' => 1,
+                        'cantidad' => $cantidad,
+                        'precio_venta' => $producto->precio?? 0,
+                        'saldo' => $saldo,
+                        'fecha' => now(),
+                        'descripcion' => $descripcion
+                    ]);
+                $procesados++;
+
+            }
+            DB::commit();
+
+        }
+
+            return response()->json([
+                'code' => 200,
+                'isSuccess' => true,
+                'message' => "Ajuste completado. Productos procesados: $procesados",
+                'errores' => $errores
+            ], Response::HTTP_OK);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'code' => 500,
+                'isSuccess' => false,
+                'message' => 'Error al ajustar productos',
                 'error' => $e->getMessage()
             ], 500);
         }

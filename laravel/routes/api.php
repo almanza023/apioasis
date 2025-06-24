@@ -50,5 +50,6 @@ Route::prefix('v1')->group(function () {
     require __DIR__ . '/v1/empresas.php';
     require __DIR__ . '/v1/cartera.php';
     require __DIR__ . '/v1/cartera-compras.php';
+    require __DIR__ . '/v1/operaciones.php';
     //});
 });

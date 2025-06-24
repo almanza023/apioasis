@@ -8,7 +8,10 @@ use App\Models\Cartera;
 use App\Models\DetalleVenta;
 use App\Models\Empresa;
 use App\Models\MovimientoInventario;
+use App\Models\Operacion;
+use App\Models\Producto;
 use App\Models\ProductoBodega;
+use App\Models\ProductoStock;
 use App\Models\Venta;
 use App\Models\VentaTipoPago;
 use Illuminate\Http\Request;
@@ -254,19 +257,40 @@ class VentaController extends Controller
                     'observaciones'=>$request->observaciones,
                     'especial'=>$especial,
                     'forma_venta'=>$request->forma_venta,
-                    'estado'=>$estado
                 ]);
 
                 $detalles = DetalleVenta::getDetalleByVenta($objeto->id);
                 $descripcion = "SALIDA POR VENTA N° ".$objeto->id;
+                $productosSinStock=[];
                 foreach ($detalles as $item) {
+                    //Verificar Stock
                     $productoId = $item->producto_id;
+                    $producto = Producto::find($productoId);
+                    if($item->total_cantidad>$producto->stock_actual){
+                        $diferencia=$item->total_cantidad-$producto->stock_actual;
+                        $productoStock=ProductoStock::create([
+                            'producto_id'=>$productoId,
+                            'venta_id'=>$objeto->id,
+                            'fecha'=>now(),
+                            'cantidad'=>$diferencia,
+                            'observaciones'=>'Venta N° '.$objeto->id,
+                            'estado'=>1,
+                        ]);
+                        array_push($productosSinStock, $item);
+                    }
                     $precioVenta = $item->producto->precio;
                     $inventario = MovimientoInventario::modificarStock($productoId, $objeto->user_id,
                      $item->total_cantidad,
                     $precioVenta, 0, $descripcion, 2);
                     $productoBodegas=ProductoBodega::updateCantidadByProductoAndBodega($productoId, $bodega_id, $item->total_cantidad,1);
                 }
+                //Actualizar estado
+               if(count($productosSinStock)>0){
+                $estado=0; // Anulada
+               }
+               $objeto->update([
+                    'estado'=>$estado
+                ]);
                 //Agregar Pagos
                 // Procesamos los pagos solo si la forma de venta es 1 (contado)
                 if ($request->forma_venta == 1) {
@@ -294,6 +318,15 @@ class VentaController extends Controller
                 if($request->forma_venta==2 && $request->especial==0){
                     $cartera=Cartera::verificarCartera($objeto->cliente_id, $objeto->total, $objeto->id);
                 }
+
+                //Registrar la Operacion
+                $operacion=Operacion::updateOrCreate(
+                    ['tipo_operacion_id' => 1, 'numero' => $objeto->id],
+                    [
+                        'fecha' => $objeto->fecha,
+                        'estado' => 1,
+                    ]
+                );
 
                 DB::commit();
                 $realizado=true;

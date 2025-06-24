@@ -60,7 +60,7 @@ class AperturaCaja extends Model
 public static function getByDateRange($startDate, $endDate)
 {
     return self::with(['user', 'bodega:nombre'])
-        ->whereBetween('fecha', [$startDate, $endDate])
+        ->whereBetween('fecha_cierre', [$startDate, $endDate])
         ->orderByDesc('id')
         ->get();
 }

@@ -310,7 +310,7 @@ class CajaController extends Controller
             $ventas=Venta::getVentasByDate($fecha_inicio, $fecha_final, $caja->id);
             $gastos=Gasto::getGastosByDate($fecha_inicio, $fecha_final, $caja->id);
             $pagos=Venta::getTotalByTipoPagoAndDate($fecha_inicio, $fecha_final, $caja->id);
-            $totalneto=$totalventas - $totalgastos;
+            $totalneto=($caja->monto_inicial + $totalventas) - $totalgastos;
             $estadoCaja = $caja->estado == 3 ? 'ANULADA' : ($caja->estado == 1 ? 'ABIERTA' : 'CERRADA');
             $data=[
                 'caja_id'=>$caja->id,

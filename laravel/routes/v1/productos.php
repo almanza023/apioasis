@@ -18,4 +18,5 @@ use Illuminate\Support\Facades\Route;
         Route::post('productos-proximos-avencer', [ProductoController::class, 'getProximosAVencer']);
         Route::get('productos-inventario', [ProductoController::class, 'getProductosInventario']);
         Route::post('productos-cargar', [ProductoController::class, 'storeImport']);
+        Route::post('productos-ajuste', [ProductoController::class, 'updateAjusteImport']);
 ?>
