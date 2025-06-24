@@ -1,0 +1,25 @@
+name: Deploy via FTP Laravel
+
+on:
+  push:
+    branches:
+      - main # Cambia a master si tu rama principal se llama así
+
+jobs:
+  ftp-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to FTP server
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ftp.comercializadoraoasis.com
+          username: comercializadoraoasis.com
+          password: Av(@}uY#5kv2
+          protocol: ftp
+          port: 21
+          local-dir: ./
+          server-dir: /api/
+          dangerous-clean-slate: false
