@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\AperturaCaja;
 use App\Models\CajaMenor;
 use App\Models\Gasto;
-use App\Models\Pedido;
+use App\Models\Pago;
+use App\Models\PagoCompra;
 use App\Models\Producto;
 use App\Models\Venta;
 use Illuminate\Http\Request;
@@ -146,7 +147,7 @@ class CajaController extends Controller
     {
         // Validación de datos
         $data = $request->only('user_id', 'fecha_cierre', 'monto_final', 'totalventas',
-        'totalgastos', 'utilidad');
+        'totalgastos', 'totalabonos', 'totalpagoscompras', 'utilidad');
         $validator = Validator::make($data, [
             'user_id' => 'required',
             'fecha_cierre' => 'required',
@@ -173,14 +174,17 @@ class CajaController extends Controller
                 'message' => 'Existen Ventas Pendientes por Facturar.',
             ], Response::HTTP_OK);
         }
-
+        $monto_final=($request->monto_final + $request->totalventas + $request->totalabonos ) -
+        ($request->totalgastos + $request->totalpagoscompras);
         // Actualizamos la Caja
         $objeto->update([
             'user_id' => $request->user_id,
             'fecha_cierre' => $fecha_cierre,
-            'monto_final' => $request->monto_final,
+            'monto_final' => $monto_final,
             'totalventas' => $request->totalventas,
             'totalgastos' => $request->totalgastos,
+            'totalabonos' => $request->totalabonos,
+            'totalpagoscompras' => $request->totalpagoscompras,
             'utilidad' => $request->utilidad,
             'estado' => 2,
         ]);
@@ -310,7 +314,10 @@ class CajaController extends Controller
             $ventas=Venta::getVentasByDate($fecha_inicio, $fecha_final, $caja->id);
             $gastos=Gasto::getGastosByDate($fecha_inicio, $fecha_final, $caja->id);
             $pagos=Venta::getTotalByTipoPagoAndDate($fecha_inicio, $fecha_final, $caja->id);
-            $totalneto=($caja->monto_inicial + $totalventas) - $totalgastos;
+            $totalabonos=Pago::getTotalByDate($fecha_inicio, $fecha_final);
+            $pagosCompra=PagoCompra::getTotalByDate($fecha_inicio, $fecha_final);
+
+            $totalneto=($caja->monto_inicial + $totalventas + $totalabonos ) - ($totalgastos + $pagosCompra);
             $estadoCaja = $caja->estado == 3 ? 'ANULADA' : ($caja->estado == 1 ? 'ABIERTA' : 'CERRADA');
             $data=[
                 'caja_id'=>$caja->id,
@@ -321,6 +328,8 @@ class CajaController extends Controller
                 'totalventas'=>$totalventas,
                 'totalgastos'=>$totalgastos,
                 'totalneto'=>$totalneto,
+                'totalabonos'=>$totalabonos,
+                'totalpagoscompra'=>$pagosCompra,
                 'ventas'=>$ventas,
                 'gastos'=>$gastos,
                 'pagos'=>$pagos,

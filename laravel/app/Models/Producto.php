@@ -64,7 +64,10 @@ class Producto extends Model
     }
 
     public static function getActivos(){
-        return self::with(['categoria', 'proveedor'])->where('estado',1)->get()->map(function ($producto) {
+        return self::with(['categoria', 'proveedor'])
+        ->where('estado',1)
+        ->orderBy('nombre', 'asc')
+        ->get()->map(function ($producto) {
             $fechaVencimiento = Carbon::parse($producto->fecha_vencimiento);
             $fechaActual = Carbon::now();
             $diferencia = $fechaVencimiento->diff($fechaActual);

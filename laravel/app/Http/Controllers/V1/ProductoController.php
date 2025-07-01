@@ -566,7 +566,7 @@ class ProductoController extends Controller
                     'lote' => $productoData['lote'] ?? null,
                     'fecha_vencimiento' => !empty($productoData['fechaVencimiento']) ? \Carbon\Carbon::parse($productoData['fechaVencimiento'])->format('Y-m-d') : null,
                     'precio' => $productoData['precioVenta'] ?? 0,
-                    'precio_compra' => $request->precio_compra ?? 0,
+                    'precio_compra' => $productoData['precioCompra'] ?? 0,
                     'stock_actual' => $productoData['cantidad'] ?? 0,
                     'ganancia' => 0,
                     'porcentajegan' => 0,

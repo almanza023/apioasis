@@ -33,6 +33,12 @@ class Pago extends Model
         return $this->belongsTo(TipoPago::class, 'tipo_pago_id');
     }
 
+    public function getTotalByDate($fecha_inicio, $fecha_final){
+        return $this->whereBetween('fecha', [$fecha_inicio, $fecha_final])
+            ->sum('valor');
+    }
+
+
 
 
 

@@ -17,6 +17,8 @@ class AperturaCaja extends Model
         'fecha_cierre',
         'totalventas',
         'totalgastos',
+        'totalabonos',
+        'totalpagoscompras',
         'utilidad',
         'descripcion',
         'estado',
