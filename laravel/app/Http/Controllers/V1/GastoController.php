@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AperturaCaja;
 use App\Models\CajaMenor;
 use App\Models\Gasto;
+use App\Models\Operacion;
 use App\Models\TipoGasto;
 use App\Models\Venta;
 use Illuminate\Http\Request;
@@ -114,6 +115,15 @@ class GastoController extends Controller
         'user_id' => $request->user_id,
     ]);
         }
+
+        //Registrar la Operacion
+        $operacion=Operacion::updateOrCreate(
+            ['tipo_operacion_id' => 5, 'numero' => $gasto->id],
+            [
+                'fecha' => $gasto->fecha,
+                'estado' => 1,
+            ]
+        );
 
         // Respuesta en caso de que todo vaya bien
         return response()->json([

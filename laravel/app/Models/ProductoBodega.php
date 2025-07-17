@@ -46,12 +46,21 @@ class ProductoBodega extends Model
         $registro = self::where('producto_id', $producto_id)
             ->where('bodega_id', $bodega_id)
             ->first();
-        if($tipo == 1){
-            $registro->cantidad = $registro->cantidad - $cantidad;
+        if($registro){
+            if($tipo == 1){
+                $registro->cantidad = $registro->cantidad - $cantidad;
+            }else{
+                $registro->cantidad = $registro->cantidad + $cantidad;
+            }
+            $registro->save();
         }else{
-            $registro->cantidad = $registro->cantidad + $cantidad;
+            self::create([
+                'producto_id' => $producto_id,
+                'bodega_id' => $bodega_id,
+                'cantidad' => $cantidad,
+                'fecha' => now()
+            ]);
         }
-        $registro->save();
     }
 
 

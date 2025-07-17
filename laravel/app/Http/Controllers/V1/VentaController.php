@@ -217,80 +217,147 @@ class VentaController extends Controller
     {
         // Validación de datos
         $data = $request->only('total', 'cantidad', 'pagos', 'dineroRecibido', 'cambio',
-        'observaciones', 'especial', 'forma_venta');
+        'observaciones', 'especial', 'forma_venta', 'cliente_id', 'detalles');
         $validator = Validator::make($data, [
             'total' => 'required',
             'cantidad' => 'required',
+            'detalles' => 'required',
         ]);
 
         // Si falla la validación error.
         if ($validator->fails()) {
             return response()->json(['error' => $validator->messages()], 400);
         }
+        //Obtenemos la venta
+        $objeto = $this->model::findOrFail($id);
 
-        $especial=0;
-        if($request->especial){
-            $especial=1;
-        }
-
+        $especial = $request->especial ? 1 : 0;
+        $insertar=$objeto->estado==0 ? true : false;
+        $actualizar=$objeto->estado==1 ? true : false;
         //Validar Apertura de Caja
-        $caja=AperturaCaja::getCajaAbierta();
-        if(!$caja){
+        $caja=AperturaCaja::findOrFail($objeto->caja_id);
+        if($caja->estado!=1){
             return response()->json([
                 'code' => 400,
                 'isSuccess' => false,
-                'message' => 'No Existe una Apertura de Caja',
+                'message' => 'No se puede actualizar Factura Caja Cerrada',
                 'data'=>[]
             ], Response::HTTP_OK);
         }
+
         $bodega_id=$caja->bodega_id;
-        // Buscamos la mesa
-        $objeto = $this->model::findOrFail($id);
+        $cambio_cliente=false;
+        $cambio_forma_venta=false;
+        $estado=1;
+        $detallesACambiar=[];
+        $descripcion = "SALIDA POR VENTA N° ".$objeto->id;
+        $productosSinStock=[];
+
         if($objeto){
-            $realizado=false;
+
             try {
                 DB::beginTransaction();
-                $estado=1; // Confirmada
+
+                if($objeto->cliente_id!=$request->cliente_id){
+                    $cambio_cliente=true;
+                }
+                if($objeto->forma_venta!=$request->forma_venta){
+                    $cambio_forma_venta=true;
+                }
+                $detalles=$request->detalles;
+                $detallesAnteriores = DetalleVenta::getDetalleByVenta($objeto->id);
+                if($actualizar){
+                    foreach ($detalles as $detalle) {
+                        $detalleAnterior=$detallesAnteriores->where('id',$detalle['id'])->first();
+                        if(!$detalleAnterior || ($detalleAnterior->precio!=$detalle['precio'] || $detalleAnterior->total_cantidad!=$detalle['total_cantidad'])){
+                            $detallesACambiar[]=$detalle;
+                        }
+                    }
+                }
+
+
+                foreach ($detalles as $item) {
+                    if($insertar){
+                        //Verificar Stock
+                        $productoId = $item['producto_id'];
+                        $producto = Producto::find($productoId);
+                        if($item['total_cantidad']>$producto->stock_actual){
+                            $diferencia=$item['total_cantidad']-$producto->stock_actual;
+                            $productoStock=ProductoStock::create([
+                                'producto_id'=>$productoId,
+                                'venta_id'=>$objeto->id,
+                                'fecha'=>now(),
+                                'cantidad'=>$diferencia,
+                                'observaciones'=>'Venta N° '.$objeto->id,
+                                'estado'=>1,
+                            ]);
+                            array_push($productosSinStock, $item);
+                            $estado=0;
+                        }
+                        $precioVenta = $item['precio'];
+                        $inventario = MovimientoInventario::modificarStock($productoId, $objeto->user_id,
+                         $item['total_cantidad'],
+                        $precioVenta, 0, $descripcion, 2);
+                        $productoBodegas=ProductoBodega::updateCantidadByProductoAndBodega($productoId, $bodega_id, $item['total_cantidad'],1);
+                    }
+                }
+
+
+                foreach ($detallesACambiar as $detalle) {
+
+                    $detalleVenta = DetalleVenta::find($detalle['id']);
+                    $detalleVenta->precio = $detalle['precio'];
+                    $detalleVenta->cantidad = $detalle['total_cantidad'];
+                    $detalleVenta->subtotal = $detalle['total_subtotal'];
+                    $detalleVenta->descuento = $detalle['descuento'];
+                    $detalleVenta->save();
+
+
+                    $detalleAnterior=$detallesAnteriores->where('id',$detalle['id'])->first();
+                    if($detalleAnterior){
+                        $productoId = $detalle['producto_id'];
+                        $cantidadAnterior = $detalleAnterior->total_cantidad;
+                        $cantidadActual = $detalle['total_cantidad'];
+                        $diferencia = $cantidadActual - $cantidadAnterior;
+                        $descripcion = $diferencia > 0 ? 'SALIDA POR VENTA' : 'DEVOLUCION POR VENTA';
+                        $inventario = MovimientoInventario::modificarStock($productoId, $objeto->user_id,
+                            $diferencia,
+                            $detalle['precio'], 0, $descripcion, 2);
+                        $productoBodegas=ProductoBodega::updateCantidadByProductoAndBodega($productoId, $bodega_id, $diferencia,1);
+                    }
+                }
+
+                  // Si se cambia la forma de venta y se selecciona "Cr dito"
+                  if ($cambio_forma_venta && $request->forma_venta == 1) {
+                    // Eliminamos todos los pagos asociados a la venta
+                    VentaTipoPago::where('venta_id', $objeto->id)->delete();
+
+                    // Asignamos el pago a cr dito como nico pago
+                    VentaTipoPago::create(['venta_id' => $objeto->id, 'tipo_pago_id' => 1]);
+                } else {
+                    // Eliminamos todos los pagos asociados a la venta
+                    VentaTipoPago::where('venta_id', $objeto->id)->delete();
+                    // Recorremos los pagos enviados en la solicitud
+                    foreach ($request->pagos as $item) {
+                        // Asociamos cada pago a la venta con su respectivo valor
+                        $ventaTipoPago = VentaTipoPago::firstOrCreate(['venta_id' => $objeto->id,
+                        'tipopago_id' => $item['tipopago_id']], ['valor' => $item['valor']]);
+                        if ($ventaTipoPago->wasRecentlyCreated) {
+                            $ventaTipoPago->valor = $item['valor'];
+                            $ventaTipoPago->save();
+                        }
+                    }
+                }
                 $objeto->update([
                     'total' => $request->total,
+                    'cliente_id'=>$request->cliente_id,
                     'cantidad' => $request->cantidad,
                     'observaciones'=>$request->observaciones,
                     'especial'=>$especial,
                     'forma_venta'=>$request->forma_venta,
+                    'estado'=>1
                 ]);
 
-                $detalles = DetalleVenta::getDetalleByVenta($objeto->id);
-                $descripcion = "SALIDA POR VENTA N° ".$objeto->id;
-                $productosSinStock=[];
-                foreach ($detalles as $item) {
-                    //Verificar Stock
-                    $productoId = $item->producto_id;
-                    $producto = Producto::find($productoId);
-                    if($item->total_cantidad>$producto->stock_actual){
-                        $diferencia=$item->total_cantidad-$producto->stock_actual;
-                        $productoStock=ProductoStock::create([
-                            'producto_id'=>$productoId,
-                            'venta_id'=>$objeto->id,
-                            'fecha'=>now(),
-                            'cantidad'=>$diferencia,
-                            'observaciones'=>'Venta N° '.$objeto->id,
-                            'estado'=>1,
-                        ]);
-                        array_push($productosSinStock, $item);
-                    }
-                    $precioVenta = $item->producto->precio;
-                    $inventario = MovimientoInventario::modificarStock($productoId, $objeto->user_id,
-                     $item->total_cantidad,
-                    $precioVenta, 0, $descripcion, 2);
-                    $productoBodegas=ProductoBodega::updateCantidadByProductoAndBodega($productoId, $bodega_id, $item->total_cantidad,1);
-                }
-                //Actualizar estado
-               if(count($productosSinStock)>0){
-                $estado=0; // Anulada
-               }
-               $objeto->update([
-                    'estado'=>$estado
-                ]);
                 //Agregar Pagos
                 // Procesamos los pagos solo si la forma de venta es 1 (contado)
                 if ($request->forma_venta == 1) {
@@ -315,18 +382,28 @@ class VentaController extends Controller
                 }
 
                 //Forma de Venta CREDITO
-                if($request->forma_venta==2 && $request->especial==0){
-                    $cartera=Cartera::verificarCartera($objeto->cliente_id, $objeto->total, $objeto->id);
+                $trigerVenta=Cartera::triggerVentas($objeto->cliente_id, $objeto->id, false);
+
+                if($insertar){
+                    //Registrar la Operacion
+                    $operacion=Operacion::updateOrCreate(
+                        ['tipo_operacion_id' => 1, 'numero' => $objeto->id],
+                        [
+                            'fecha' => $objeto->fecha,
+                            'estado' => 1,
+                        ]
+                    );
                 }
 
-                //Registrar la Operacion
-                $operacion=Operacion::updateOrCreate(
-                    ['tipo_operacion_id' => 1, 'numero' => $objeto->id],
-                    [
-                        'fecha' => $objeto->fecha,
-                        'estado' => 1,
-                    ]
-                );
+                //Verificar si tiene cartera
+                $cartera=Cartera::where('cliente_id',$objeto->cliente_id)
+                ->where('estado',1)
+                ->first();
+                if($cartera){
+                    $objeto->update([
+                        'cartera_id'=>$cartera->id,
+                    ]);
+                }
 
                 DB::commit();
                 $realizado=true;
@@ -343,7 +420,8 @@ class VentaController extends Controller
                 return response()->json([
                     'code' => 500,
                     'isSuccess' => false,
-                    'message' => $e->getMessage()
+                    'message' => $e->getMessage(),
+                    'line' => $e->getLine()
                 ], Response::HTTP_INTERNAL_SERVER_ERROR);
             }
         }else{
@@ -509,6 +587,53 @@ class VentaController extends Controller
                 'data' => null
             ], Response::HTTP_NOT_FOUND);
         }
+    }
+
+    public function updateDetalle(Request $request)
+    {
+        // Validamos los datos
+        $data = $request->only('id', 'venta_id', 'subtotal', 'precio', 'cantidad', 'descuento');
+        $validator = Validator::make($data, [
+            'id' => 'required',
+            'venta_id' => 'required',
+            'precio' => 'required',
+            'cantidad' => 'required',
+            'subtotal' => 'required',
+        ]);
+
+        // Si falla la validación
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->messages()], 400);
+        }
+
+        $caja=AperturaCaja::getCajaAbierta();
+        if(!$caja){
+            return response()->json([
+                'code' => 400,
+                'isSuccess' => false,
+                'message' => 'No Existe una Apertura de Caja',
+                'data'=>[]
+            ], Response::HTTP_OK);
+        }
+
+        $detalle=DetalleVenta::updateOrCreate(
+            [
+            'id' => $request->id],
+            [
+                'cantidad' => $request->cantidad,
+                'precio' => $request->precio,
+                'descuento' => $request->descuento,
+                'subtotal' => $request->subtotal
+            ]
+        );
+        $data=DetalleVenta::getDetalleByVenta($request->venta_id);
+        // Respuesta en caso de que todo vaya bien.
+        return response()->json([
+            'code' => 200,
+            'isSuccess' => true,
+            'message' => 'Producto Actualizado Exitosamente',
+            'data'=>$data
+        ], Response::HTTP_OK);
     }
 
 

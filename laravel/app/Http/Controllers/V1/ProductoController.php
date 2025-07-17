@@ -111,25 +111,12 @@ class ProductoController extends Controller
             ]);
 
 
-            foreach ($request->detalles as $item) {
-                ProductoBodega::create([
-                    'producto_id' => $productoId,
-                    'bodega_id' => $item['bodega_id'],
-                    'cantidad' => $item['cantidad'],
-                    'fecha' => now()
-                ]);
-                $descripcion = "ENTRADA A BODEGA " . $item['bodega_id'];
-                $cantidad = $item['cantidad'];
-                MovimientoInventario::create([
-                    'producto_id' => $productoId,
-                    'user_id' => $user_id,
-                    'tipo' => $tipoMovimiento,
-                    'cantidad' => $cantidad,
-                    'precio_venta' => $precioVenta,
-                    'saldo' => $cantidad,
-                    'fecha' => now(),
-                    'descripcion' => $descripcion
-                ]);
+            if (isset($request->detalles) && count($request->detalles) > 0) {
+                foreach ($request->detalles as $item) {
+                    $this->registrarEnBodega($productoId, $item['bodega_id'], $item['cantidad'], $user_id, $precioVenta, $tipoMovimiento);
+                }
+            }else{
+                $this->registrarEnBodega($productoId, 5, $cantidad, $user_id, $precioVenta, $tipoMovimiento);
             }
         });
 
@@ -605,7 +592,7 @@ class ProductoController extends Controller
                         'fecha' => now(),
                         'descripcion' => $descripcion
                     ]);
-
+                    $this->registrarEnBodega($producto->id, $bodega_id, $productoData['cantidad'], $request->user_id, $productoData['precioVenta'] ?? 0, 1);
 
                 $procesados++;
             }
@@ -712,5 +699,27 @@ class ProductoController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function registrarEnBodega($productoId, $bodega_id, $cantidad, $user_id, $precioVenta, $tipoMovimiento)
+    {
+        ProductoBodega::create([
+            'producto_id' => $productoId,
+            'bodega_id' => $bodega_id,
+            'cantidad' => $cantidad,
+            'fecha' => now()
+        ]);
+        $descripcion = "ENTRADA A BODEGA " . $bodega_id;
+        $cantidad = $cantidad;
+        MovimientoInventario::create([
+            'producto_id' => $productoId,
+            'user_id' => $user_id,
+            'tipo' => $tipoMovimiento,
+            'cantidad' => $cantidad,
+            'precio_venta' => $precioVenta,
+            'saldo' => $cantidad,
+            'fecha' => now(),
+            'descripcion' => $descripcion
+        ]);
     }
 }

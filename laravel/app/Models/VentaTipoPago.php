@@ -32,9 +32,10 @@ class VentaTipoPago extends Model
     }
 
     public static function getPagosByVenta($ventaId){
-        return self::where('venta_id', $ventaId)       
-        ->with(['tipopago:nombre'])
-        ->get();
+        return self::select('ventas_tipo_pagos.*', 'tipo_pagos.nombre as tipo')
+            ->join('tipo_pagos', 'ventas_tipo_pagos.tipopago_id', '=', 'tipo_pagos.id')
+            ->where('ventas_tipo_pagos.venta_id', $ventaId)
+            ->get();
 
     }
 

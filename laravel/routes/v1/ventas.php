@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Route;
         Route::post('ventas-filter', [VentaController::class, 'filter']);
         Route::get('ventas-empresa', [VentaController::class, 'obtenerDatosEmpresa']);
         Route::delete('ventas-detalles/{id}', [VentaController::class, 'destroyDetalle']);
+        Route::post('ventas-detalles-update', [VentaController::class, 'updateDetalle']);
 
 
 

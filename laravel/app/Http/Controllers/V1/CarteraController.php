@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Cartera;
 use App\Models\Operacion;
 use App\Models\Pago;
+use App\Models\Venta;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,10 +41,11 @@ class CarteraController extends Controller
     public function storePagos(Request $request)
     {
         // Validamos los datos
-        $data = $request->only('cartera_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', );
+        $data = $request->only('cartera_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', 'caja_id' );
         $validator = Validator::make($data, [
             'cartera_id' => 'required|exists:cartera,id',
             'fecha' => 'required|date',
+            'caja_id' => 'required',
             'tipo_pago_id' => 'required|exists:tipo_pagos,id',
             'valor' => 'required|numeric|min:0',
         ]);
@@ -70,6 +72,7 @@ class CarteraController extends Controller
             $pago = Pago::create([
                 'cartera_id' => $request->cartera_id,
                 'fecha' => $fecha,
+                'caja_id' => $request->caja_id,
                 'tipo_pago_id' => $request->tipo_pago_id,
                 'valor' => $request->valor,
                 'observaciones' => $request->observaciones,
@@ -83,12 +86,19 @@ class CarteraController extends Controller
             ]);
             $cartera->detalles()->create([
                 'cartera_id' => $cartera->id,
-                'total' => $request->valor,
+                'total' => $cartera->total,
                 'saldo' => $cartera->saldo,
                 'abono' => $request->valor,
                 'fecha' => $fecha,
                 'estado' => 1,
             ]);
+
+            //Cerrar la Cartera
+            if($cartera->saldo == 0){
+                $cartera->update([
+                    'estado' => 2,
+                ]);
+            }
 
             //Registrar la Operacion
             $operacion=Operacion::updateOrCreate(
@@ -136,23 +146,47 @@ class CarteraController extends Controller
         // Protegemos la operación dentro de una transacción
         DB::transaction(function () use ($request) {
             // Creamos el gasto en la BD
-            $cartera = Cartera::create([
-                'cliente_id' => $request->cliente_id,
-                'fecha' => $request->fecha,
-                'total' => $request->total,
-                'saldo' => $request->saldo,
-                'abonos' => $request->abonos,
-                'observaciones' => $request->observaciones,
-                'estado' => 1,
-            ]);
-            $cartera->detalles()->create([
-                'cartera_id' => $cartera->id,
-                'total' => $request->total,
-                'saldo' => $request->saldo,
-                'abono' => $request->abonos,
-                'fecha' => $request->fecha,
-                'estado' => 1,
-            ]);
+
+            $cartera=Cartera::where('cliente_id',$request->cliente_id)
+            ->where('estado',1)
+            ->first();
+            if($cartera){
+                $cartera->update([
+                    'total' => $cartera->total + $request->total,
+                    'saldo' => ($cartera->total + $request->total)- ($cartera->abonos + $request->abonos),
+                    'abonos' => $cartera->abonos + $request->abonos,
+                ]);
+                $cartera->detalles()->create([
+                    'cartera_id' => $cartera->id,
+                    'total' => $request->total,
+                    'saldo' => $request->saldo,
+                    'saldoinicial' => $cartera->total,
+                    'abono' => $request->abonos,
+                    'fecha' => $request->fecha,
+                    'estado' => 1,
+                ]);
+            }else{
+                $cartera = Cartera::create([
+                    'cliente_id' => $request->cliente_id,
+                    'fecha' => $request->fecha,
+                    'total' => $request->total,
+                    'saldo' => $request->saldo,
+                    'abonos' => $request->abonos,
+                    'observaciones' => $request->observaciones,
+                    'estado' => 1,
+                ]);
+
+                $cartera->detalles()->create([
+                    'cartera_id' => $cartera->id,
+                    'total' => $request->total,
+                    'saldo' => $request->saldo,
+                    'abono' => $request->abonos,
+                    'fecha' => $request->fecha,
+                    'estado' => 1,
+                ]);
+            }
+
+
 
         });
          // Respuesta en caso de que todo vaya bien
@@ -168,6 +202,24 @@ class CarteraController extends Controller
     {
         // Buscamos el gasto
         $cartera = $this->model::with(['cliente', 'detalles', 'pagos', 'pagos.tipoPago'])->find($id);
+        $ventas=Venta::select('id','fecha','total')
+        ->where('cliente_id',$cartera->cliente_id)
+        ->where('forma_venta',2)
+        ->where('cartera_id',$cartera->id)
+        ->where('estado',1)
+        ->orderBy('id','asc')
+        ->get();
+        if(!$ventas->count()){
+            $ventas=Venta::select('id','fecha','total')
+            ->where('cliente_id',$cartera->cliente_id)
+            ->where('forma_venta',2)
+            ->where('estado',1)
+            ->orderBy('id','asc')
+            ->get();
+        }
+        $cartera->ventas=$ventas;
+
+
         // Si el gasto no existe devolvemos error no encontrado
         if (!$cartera) {
             return response()->json([

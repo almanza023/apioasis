@@ -18,6 +18,7 @@ class Venta extends Model
         'fecha',
         'total',
         'cantidad',
+        'cartera_id',
         'observaciones',
         'estado',
     ];
@@ -109,6 +110,19 @@ class Venta extends Model
         }
         return $query->orderByDesc('id')->get();
     }
+
+    public static function getTotalByFormaPago( $caja_id = null)
+    {
+        $query = self::selectRaw("CASE forma_venta WHEN 1 THEN 'Contado' WHEN 2 THEN 'Credito' END as nombre, SUM(total) as total")
+            ->where('estado', 1);
+
+        if ($caja_id !== null) {
+            $query->where('caja_id', $caja_id);
+        }
+
+        return $query->groupBy('nombre')->get();
+    }
+
 
 
 

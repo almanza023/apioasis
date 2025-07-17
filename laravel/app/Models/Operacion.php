@@ -79,6 +79,15 @@ class Operacion extends Model
                 ->first();
                 array_push($data, $temp_data);
              }
+             else if($operacion->tipo_operacion_id == 5){
+                $temp_data =Operacion::join('gastos', 'operaciones.numero', '=', 'gastos.id')
+                ->join('tipo_gastos', 'gastos.tipogasto_id', '=', 'tipo_gastos.id')
+                ->join('tipo_operaciones', 'operaciones.tipo_operacion_id', '=', 'tipo_operaciones.id')
+                ->select('operaciones.*', 'gastos.valortotal as valor', 'tipo_gastos.nombre as nombre', 'tipo_operaciones.nombre as tipo_operacion', 'operaciones.created_at as fecha_creacion')
+                ->where('operaciones.id', $operacion->id)
+                ->first();
+                array_push($data, $temp_data);
+             }
          }
 
         return $data;

@@ -71,6 +71,14 @@ class Compra extends Model
         return $query->orderByDesc('id')->get();
     }
 
+    public static function getTotalByContado($caja_id)
+    {
+        $query = self::where('estado', 1)->where('forma_pago', 2);
+        if ($caja_id != null) {
+            $query->where('caja_id', $caja_id);
+        }
+        return $query->sum('total');
+    }
 
 
 }

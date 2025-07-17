@@ -16,4 +16,5 @@ use Illuminate\Support\Facades\Route;
         Route::post('apertura-historicos', [CajaController::class, 'getReporteHistorico']);
         Route::post('apertura-caja-menor', [CajaController::class, 'getReporteHistoricoCajaMenor']);
         Route::post('reporte-caja', [CajaController::class, 'gerReporteDia']);
+        Route::post('apertura-caja-update', [CajaController::class, 'updateCaja']);
 ?>

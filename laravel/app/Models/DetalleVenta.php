@@ -43,9 +43,14 @@ class DetalleVenta extends Model
         DB::raw('SUM(subtotal) as total_subtotal'))
             ->where('venta_id', $ventaId)
             ->groupBy('producto_id')
-            ->with('producto:id,nombre,precio')
+            ->with('producto:id,nombre,descripcion,laboratorio')
             ->get();
         }
+
+    public static function deleteDetallesByVenta($ventaId){
+        return self::where('venta_id', $ventaId)->delete();
+    }
+
 
 
 

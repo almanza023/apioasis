@@ -5,6 +5,7 @@ namespace App\Http\Controllers\V1;
 use App\Http\Controllers\Controller;
 use App\Models\AperturaCaja;
 use App\Models\CajaMenor;
+use App\Models\Compra;
 use App\Models\Gasto;
 use App\Models\Pago;
 use App\Models\PagoCompra;
@@ -106,6 +107,7 @@ class CajaController extends Controller
             'code' => 200,
             'isSuccess' => true,
             'message' => 'Apertura de Caja para la fecha '.$request->fecha." Exitosamente",
+            "data"=>$objeto
         ], Response::HTTP_OK);
     }
 
@@ -147,10 +149,10 @@ class CajaController extends Controller
     {
         // Validación de datos
         $data = $request->only('user_id', 'fecha_cierre', 'monto_final', 'totalventas',
-        'totalgastos', 'totalabonos', 'totalpagoscompras', 'utilidad');
+        'totalgastos', 'totalabonos', 'totalpagoscompras', 'utilidad', 'ventasefectivo',
+        'pagosefectivo', 'comprascontado');
         $validator = Validator::make($data, [
             'user_id' => 'required',
-            'fecha_cierre' => 'required',
             'monto_final' => 'required',
             'totalventas' => 'required',
             'totalgastos' => 'required',
@@ -174,18 +176,20 @@ class CajaController extends Controller
                 'message' => 'Existen Ventas Pendientes por Facturar.',
             ], Response::HTTP_OK);
         }
-        $monto_final=($request->monto_final + $request->totalventas + $request->totalabonos ) -
-        ($request->totalgastos + $request->totalpagoscompras);
+
         // Actualizamos la Caja
         $objeto->update([
             'user_id' => $request->user_id,
             'fecha_cierre' => $fecha_cierre,
-            'monto_final' => $monto_final,
+            'monto_final' => $request->monto_final,
             'totalventas' => $request->totalventas,
             'totalgastos' => $request->totalgastos,
             'totalabonos' => $request->totalabonos,
-            'totalpagoscompras' => $request->totalpagoscompras,
+            'totalpagocompras' => $request->totalpagoscompras,
             'utilidad' => $request->utilidad,
+            'ventasefectivo' => $request->ventasefectivo,
+            'pagosefectivo' => $request->pagosefectivo,
+            'comprascontado' => $request->comprascontado,
             'estado' => 2,
         ]);
 
@@ -206,12 +210,52 @@ class CajaController extends Controller
         ], Response::HTTP_OK);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  \App\Models\Mesa  $mesa
-     * @return \Illuminate\Http\Response
-     */
+    public function updateCaja(Request $request)
+    {
+        // Validación de datos
+        $data = $request->only('user_id','bodega_id', 'fecha','monto_inicial', 'descripcion', 'id');
+        $validator = Validator::make($data, [
+            'user_id' => 'required',
+            'bodega_id' => 'required',
+            'fecha' => 'required',
+            'monto_inicial' => 'required',
+        ]);
+        $fecha = \Carbon\Carbon::parse($request->fecha)->format('Y-m-d');
+        // Si falla la validación error.
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->messages()], 400);
+        }
+
+        // Buscamos la mesa
+        $objeto = $this->model::findOrFail($request->id);
+        $ventasPendientes=Venta::where('estado',0)
+        ->where('caja_id',$request->id)->count();
+        if($ventasPendientes>0){
+            return response()->json([
+                'code' => 400,
+                'isSuccess' => false,
+                'message' => 'Existen Ventas Pendientes por Facturar.',
+            ], Response::HTTP_OK);
+        }
+        $monto_final=($request->monto_final + $request->totalventas + $request->totalabonos ) -
+        ($request->totalgastos + $request->totalpagoscompras);
+        // Actualizamos la Caja
+        $objeto->update([
+            'user_id' => $request->user_id,
+            'bodega_id' => $request->bodega_id,
+            'fecha' => $fecha,
+            'monto_inicial' => $request->monto_inicial,
+            'descripcion' => $request->descripcion,
+        ]);
+
+        // Devolvemos los datos actualizados.
+        return response()->json([
+            'code' => 200,
+            'isSuccess' => true,
+            'message' => 'Caja Actualizada Exitosamente',
+        ], Response::HTTP_OK);
+    }
+
     public function destroy($id)
     {
         // Buscamos la mesa
@@ -225,7 +269,7 @@ class CajaController extends Controller
         return response()->json([
             'code' => 200,
             'isSuccess' => true,
-            'message' => 'Mesa Eliminada Exitosamente'
+            'message' => 'Caja  Eliminada Exitosamente'
         ], Response::HTTP_OK);
     }
 
@@ -310,14 +354,27 @@ class CajaController extends Controller
         }
         if($caja){
             $totalgastos=Gasto::getTotalByDate($fecha_inicio, $fecha_final, $caja->id);
-            $totalventas=Venta::getTotalByDate($fecha_inicio, $fecha_final, $caja->id);
+            $totalventasGeneral=Venta::getTotalByDate($fecha_inicio, $fecha_final, $caja->id);
             $ventas=Venta::getVentasByDate($fecha_inicio, $fecha_final, $caja->id);
             $gastos=Gasto::getGastosByDate($fecha_inicio, $fecha_final, $caja->id);
-            $pagos=Venta::getTotalByTipoPagoAndDate($fecha_inicio, $fecha_final, $caja->id);
-            $totalabonos=Pago::getTotalByDate($fecha_inicio, $fecha_final);
-            $pagosCompra=PagoCompra::getTotalByDate($fecha_inicio, $fecha_final);
+            $comprasContado=Compra::getTotalByContado($caja->id);
 
-            $totalneto=($caja->monto_inicial + $totalventas + $totalabonos ) - ($totalgastos + $pagosCompra);
+            $pagos=Venta::getTotalByTipoPagoAndDate($fecha_inicio, $fecha_final, $caja->id);
+            $totalabonosefectivo=Pago::getTotalByDate($caja->id);
+
+            $pagosCompraEfectivo=PagoCompra::getTotalByDate($caja->id);
+
+            $otrosmedios=0;
+            $efectivo=0;
+            foreach($pagos as $pago){
+                if($pago->nombre=='EFECTIVO'){
+                    $efectivo=$pago->total;
+                }else{
+                    $otrosmedios+=$pago->total;
+                }
+            }
+            $totalneto=($caja->monto_inicial + $efectivo + $totalabonosefectivo ) -
+            ($totalgastos + $pagosCompraEfectivo + $comprasContado);
             $estadoCaja = $caja->estado == 3 ? 'ANULADA' : ($caja->estado == 1 ? 'ABIERTA' : 'CERRADA');
             $data=[
                 'caja_id'=>$caja->id,
@@ -325,11 +382,14 @@ class CajaController extends Controller
                 'estado'=>$caja->estado,
                 'fecha_inicio'=>$caja->fecha,
                 'base_inicial'=>$caja->monto_inicial,
-                'totalventas'=>$totalventas,
+                'totalventasGeneral'=>$totalventasGeneral,
                 'totalgastos'=>$totalgastos,
+                'totalcomprascontado'=>$comprasContado,
                 'totalneto'=>$totalneto,
-                'totalabonos'=>$totalabonos,
-                'totalpagoscompra'=>$pagosCompra,
+                'totalabonosefectivo'=>$totalabonosefectivo,
+                'totalpagoscompraefectivo'=>$pagosCompraEfectivo,
+                'totalventascontado'=>$efectivo,
+                'totalventasotrosmedios'=>$otrosmedios,
                 'ventas'=>$ventas,
                 'gastos'=>$gastos,
                 'pagos'=>$pagos,
@@ -372,11 +432,36 @@ class CajaController extends Controller
 
         if($caja){
             $totalVentas=Venta::getTotalByDate($fechaInicio, $fechaFin, $caja->id);
+            $pagos=Venta::getTotalByTipoPagoAndDate($fechaInicio, $fechaFin, $caja->id);
+            $formaVenta=Venta::getTotalByFormaPago($caja->id);
+
+            $efectivo=0;
+            $contado=0;
+            $credito=0;
+            foreach($pagos as $pago){
+                if($pago->nombre=='EFECTIVO'){
+                    $efectivo=$pago->total;
+                }else{
+                    $credito+=$pago->total;
+                }
+            }
+
+            foreach($formaVenta as $forma){
+                if($forma->nombre=='Credito'){
+                    $credito=$forma->total;
+                }else{
+                    $contado+=$forma->total;
+                }
+            }
             $totalProductos=Producto::getProductosStockMinimo();
 
             $data=[
                 'caja'=>$caja,
+                'caja_id'=>$caja->id,
                 'totalVentas'=>$totalVentas,
+                'efectivo'=>$efectivo,
+                'contado'=>$contado,
+                'credito'=>$credito,
                 'totalProductos'=>$totalProductos,
             ];
             return response()->json([

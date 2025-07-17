@@ -21,6 +21,9 @@ class AperturaCaja extends Model
         'totalpagoscompras',
         'utilidad',
         'descripcion',
+        'ventasefectivo',
+        'pagosefectivo',
+        'comprascontado',
         'estado',
     ];
 

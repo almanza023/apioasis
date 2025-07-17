@@ -12,6 +12,7 @@ class Pago extends Model
     protected $fillable = [
         'cartera_id',
         'tipo_pago_id',
+        'caja_id',
         'fecha',
         'valor',
         'observaciones',
@@ -33,8 +34,9 @@ class Pago extends Model
         return $this->belongsTo(TipoPago::class, 'tipo_pago_id');
     }
 
-    public function getTotalByDate($fecha_inicio, $fecha_final){
-        return $this->whereBetween('fecha', [$fecha_inicio, $fecha_final])
+    public static function getTotalByDate($caja_id){
+        return self::where('caja_id', $caja_id)
+            ->where('tipo_pago_id', 1)
             ->sum('valor');
     }
 

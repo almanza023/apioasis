@@ -4,6 +4,7 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\CarteraCompra;
+use App\Models\Compra;
 use App\Models\Operacion;
 use App\Models\PagoCompra;
 use Carbon\Carbon;
@@ -40,10 +41,11 @@ class CarteraCompraController extends Controller
     public function storePagos(Request $request)
     {
         // Validamos los datos
-        $data = $request->only('cartera_compra_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', );
+        $data = $request->only('cartera_compra_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', 'caja_id' );
         $validator = Validator::make($data, [
             'cartera_compra_id' => 'required|exists:cartera_compras,id',
             'fecha' => 'required|date',
+            'caja_id' => 'required',
             'tipo_pago_id' => 'required|exists:tipo_pagos,id',
             'valor' => 'required|numeric|min:0',
         ]);
@@ -70,6 +72,7 @@ class CarteraCompraController extends Controller
             $pago = PagoCompra::create([
                 'cartera_compra_id' => $request->cartera_compra_id,
                 'fecha' => $fecha,
+                'caja_id' => $request->caja_id,
                 'tipo_pago_id' => $request->tipo_pago_id,
                 'valor' => $request->valor,
                 'observaciones' => $request->observaciones,
@@ -176,6 +179,14 @@ class CarteraCompraController extends Controller
                 'message' => 'Cartera no encontrada'
             ], 404);
         }
+
+        $compras=Compra::select('id','fecha','total')
+        ->where('proveedor_id',$cartera->proveedor_id)
+        ->where('estado',2)
+        ->where('forma_pago',2)
+        ->orderBy('id','asc')
+        ->get();
+        $cartera->compras=$compras;
 
         return response()->json([
             'code' => 200,
