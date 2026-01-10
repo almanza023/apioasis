@@ -172,17 +172,7 @@ public static function triggerVentas($cliente_id, $venta_id, $is_delete = false)
         ->where('estado', 1)
         ->sum('total');
     }
-    if ($cartera && $totalVentas == 0 && $cartera->abonos == 0) {
-        $cartera->delete();
-        $cartera->detalles()->create([
-            'cartera_id' => $cartera->id,
-            'total' => $totalVentas,
-            'saldo' => $cartera->saldo,
-            'fecha' => now(),
-            'observaciones' => 'Eliminacion de Cartera N° ' . $venta_id,
-            'estado' => 1,
-        ]);
-    } elseif ($cartera) {
+    if ($cartera) {
         $saldoInicial=$cartera->saldoinicial;
         $nuevoTotal=0;
         $nuevoSaldo=0;
@@ -242,13 +232,38 @@ public static function triggerVentas($cliente_id, $venta_id, $is_delete = false)
             'estado' => 1,
         ]);
     }
+    //cerrar la cartera
+    if( $cartera->saldo == 0){
+        $cartera->update([
+            'estado' => 2,
+            'observaciones'=>'Cerrada por Ventas N° '.$venta_id,
+        ]);
+    }
     return $cartera;
 }
 
+public static function actualizarCartera($cartera_id) {
+    $cartera=self::where('id',$cartera_id)
+    ->where('estado',1)
+    ->first();
+    $totalVentas=0;
+    if($cartera){
+        $cliente_id=$cartera->cliente_id;
+        $totalVentas = Venta::where('cliente_id', $cliente_id)
+        ->where('forma_venta', 2)
+        ->where('estado', 1)
+        ->where('cartera_id', $cartera->id)
+        ->sum('total');
 
-
-
-
-
-
+        if(!empty($cartera->saldoinicial)){
+            $totalVentas += $cartera->saldoinicial;
+        }
+        $cartera->update([
+            'total' => $totalVentas,
+            'observaciones'=>'Actualizada por Consulta de Cartera',
+            'saldo' => $totalVentas - $cartera->abonos,
+        ]);
+    }
+    return $cartera;
+}
 }

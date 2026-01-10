@@ -272,6 +272,17 @@ class CompraController extends Controller
 
                     }
                 }
+
+                //Verificar si tiene cartera
+                $cartera=CarteraCompra::where('proveedor_id',$objeto->proveedor_id)
+                ->where('estado',1)
+                ->first();
+                if($cartera){
+                    $objeto->update([
+                        'cartera_id'=>$cartera->id,
+                    ]);
+                }
+
                 //Registrar la Operacion
                 $operacion=Operacion::updateOrCreate(
                     ['tipo_operacion_id' => 2, 'numero' => $objeto->id],

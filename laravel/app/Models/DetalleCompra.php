@@ -43,7 +43,8 @@ class DetalleCompra extends Model
         'precio', 'id', 'precio_venta')
             ->where('compra_id', $compraId)
             ->groupBy('producto_id', 'precio')
-            ->with('producto:id,nombre,precio') // Asegúrate de que el modelo Producto tenga los campos 'id', 'nombre' y 'precio'
+            ->with('producto:id,nombre,precio')
+            ->orderBy('id') // Asegúrate de que el modelo Producto tenga los campos 'id', 'nombre' y 'precio'
             ->get();
         }
 

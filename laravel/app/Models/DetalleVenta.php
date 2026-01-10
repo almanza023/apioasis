@@ -44,6 +44,7 @@ class DetalleVenta extends Model
             ->where('venta_id', $ventaId)
             ->groupBy('producto_id')
             ->with('producto:id,nombre,descripcion,laboratorio')
+            ->orderBy('id')
             ->get();
         }
 

@@ -236,14 +236,14 @@ class VentaController extends Controller
         $actualizar=$objeto->estado==1 ? true : false;
         //Validar Apertura de Caja
         $caja=AperturaCaja::findOrFail($objeto->caja_id);
-        if($caja->estado!=1){
-            return response()->json([
-                'code' => 400,
-                'isSuccess' => false,
-                'message' => 'No se puede actualizar Factura Caja Cerrada',
-                'data'=>[]
-            ], Response::HTTP_OK);
-        }
+        // if($caja->estado!=1){
+        //     return response()->json([
+        //         'code' => 400,
+        //         'isSuccess' => false,
+        //         'message' => 'No se puede actualizar Factura Caja Cerrada',
+        //         'data'=>[]
+        //     ], Response::HTTP_OK);
+        // }
 
         $bodega_id=$caja->bodega_id;
         $cambio_cliente=false;

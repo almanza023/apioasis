@@ -15,6 +15,7 @@ class CarteraCompra extends Model
         'total',
         'abonos',
         'saldo',
+        'saldoinicial',
         'observaciones',
         'estado',
     ];
@@ -133,11 +134,35 @@ public static function descontarCartera($proveedor_id, $compra_id, $total){
     return $cartera;
 }
 
+public static function actualizarCartera($cartera_id) {
+    $cartera=self::where('id',$cartera_id)
+    ->where('estado',1)
+    ->first();
+    $totalVentas=0;
+    if($cartera){
+        $proveedor_id=$cartera->proveedor_id;
+        $totalVentas = Compra::where('proveedor_id', $proveedor_id)
+        ->where('forma_pago', 2)
+        ->where('estado', 2)
+        ->where('cartera_id', $cartera->id)
+        ->sum('total');
+
+        if($totalVentas==0){
+            return $cartera;
+        }
+
+        if(!empty($cartera->saldoinicial)){
+            $totalVentas += $cartera->saldoinicial;
+        }
+
+        $cartera->update([
+            'total' => $totalVentas,
+            'observaciones'=>'Actualizada por Consulta de Cartera Compra',
+            'saldo' => $totalVentas - $cartera->abonos,
+        ]);
 
 
-
-
-
-
-
+    }
+    return $cartera;
+}
 }

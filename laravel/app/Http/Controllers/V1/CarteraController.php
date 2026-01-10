@@ -200,6 +200,8 @@ class CarteraController extends Controller
 
     public function show($id)
     {
+        //Actualizamos la Cartera
+        $this->model::actualizarCartera($id);
         // Buscamos el gasto
         $cartera = $this->model::with(['cliente', 'detalles', 'pagos', 'pagos.tipoPago'])->find($id);
         $ventas=Venta::select('id','fecha','total')
@@ -235,6 +237,7 @@ class CarteraController extends Controller
             'data' => $cartera
         ], Response::HTTP_OK);
     }
+
     public function update(Request $request, $id)
     {
         // Validación de datos
@@ -381,6 +384,70 @@ class CarteraController extends Controller
         }
 
     }
+
+    public function actualizarCartera (Request $request){
+
+        $data = $request->only('cartera_id');
+
+        $cartera = $this->model::actualizarCartera($request->cartera_id);
+
+        if ($cartera) {
+            return response()->json([
+                'code' => 200,
+                'isSuccess' => true,
+                'message' => 'Cartera actualizada Exitosamente',
+                'data' => $cartera
+            ], Response::HTTP_OK);
+        } else {
+            return response()->json([
+                'code' => 200,
+                'isSuccess' => false,
+                'message' => 'No se encontraron carteras',
+                'data' => []
+            ], Response::HTTP_OK);
+        }
+
+    }
+
+public function destroyPago($id)
+{
+    // Protegemos la operación dentro de una transacción
+    DB::transaction(function () use ($id) {
+        // Buscamos el pago
+        $pago = Pago::findOrFail($id);
+
+        // Actualizamos la cartera para revertir el pago
+        $cartera = Cartera::find($pago->cartera_id);
+        if ($cartera) {
+            $cartera->update([
+                'saldo' => $cartera->saldo + $pago->valor,
+                'abonos' => $cartera->abonos - $pago->valor,
+                'observaciones' => 'Eliminación de Pago N° '.$pago->id,
+            ]);
+
+            $cartera->detalles()->create([
+                'cartera_id' => $cartera->id,
+                'total' => $cartera->total,
+                'saldo' => $cartera->saldo,
+                'abono' => $cartera->abonos,
+                'fecha' => now(),
+                'observaciones' => 'Eliminación de Pago N° '.$pago->id,
+                'estado' => 1,
+            ]);
+        }
+
+        // Eliminamos el pago
+        $pago->delete();
+    });
+
+    // Devolvemos la respuesta
+    return response()->json([
+        'code' => 200,
+        'isSuccess' => true,
+        'message' => 'Pago Eliminado Exitosamente'
+    ], Response::HTTP_OK);
+}
+
 
 
 }

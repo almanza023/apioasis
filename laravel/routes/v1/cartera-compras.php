@@ -12,5 +12,6 @@ use Illuminate\Support\Facades\Route;
         Route::post('carteras-compras-pagos', [CarteraCompraController::class, 'storePagos']);
         Route::get('carteras-compras-activos', [CarteraCompraController::class, 'activos']);
         Route::post('carteras-compras-filter', [CarteraCompraController::class, 'filter']);
+        Route::delete('carteras-compras-pagos/{id}', [CarteraCompraController::class, 'destroyPago']);
 
 ?>

@@ -17,6 +17,7 @@ class Compra extends Model
         'total',
         'forma_pago',
         'cantidad',
+        'cartera_id',
         'estado',
     ];
 
