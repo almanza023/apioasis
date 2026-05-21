@@ -11,6 +11,7 @@ class Cartera extends Model
     protected $table = 'cartera';
     protected $fillable = [
         'cliente_id',
+        'venta_id',
         'fecha',
         'total',
         'abonos',

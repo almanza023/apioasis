@@ -41,9 +41,10 @@ class CarteraController extends Controller
     public function storePagos(Request $request)
     {
         // Validamos los datos
-        $data = $request->only('cartera_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', 'caja_id' );
+        $data = $request->only('cartera_id', 'venta_id', 'fecha', 'tipo_pago_id', 'valor', 'observaciones', 'caja_id' );
         $validator = Validator::make($data, [
             'cartera_id' => 'required|exists:cartera,id',
+            'venta_id' => 'nullable|exists:ventas,id',
             'fecha' => 'required|date',
             'caja_id' => 'required',
             'tipo_pago_id' => 'required|exists:tipo_pagos,id',
@@ -52,9 +53,44 @@ class CarteraController extends Controller
 
         // Si falla la validación
         if ($validator->fails()) {
-            return response()->json(['error' => $validator->messages()], 400);
+            return response()->json(['error' => $validator->errors()], 400);
         }
         $cartera = Cartera::find($request->cartera_id);
+        if (!$cartera) {
+            return response()->json([
+                'code' => 404,
+                'isSuccess' => false,
+                'message' => 'Cartera no encontrada',
+            ], Response::HTTP_OK);
+        }
+
+        $venta = null;
+        if ($request->filled('venta_id')) {
+            $venta = Venta::where('id', $request->venta_id)
+                ->where('cliente_id', $cartera->cliente_id)
+                ->first();
+
+            if (!$venta) {
+                return response()->json([
+                    'code' => 400,
+                    'isSuccess' => false,
+                    'message' => 'La venta no corresponde al cliente de la cartera',
+                ], Response::HTTP_OK);
+            }
+
+            $saldoVenta = ($venta->saldo === null || $venta->saldo === '')
+                ? (float) $venta->total
+                : (float) $venta->saldo;
+
+            if ($request->valor > $saldoVenta) {
+                return response()->json([
+                    'code' => 400,
+                    'isSuccess' => false,
+                    'message' => 'El valor no puede ser mayor al saldo de la venta',
+                ], Response::HTTP_OK);
+            }
+        }
+
         if($request->valor > $cartera->saldo){
             return response()->json([
                 'code' => 400,
@@ -64,13 +100,14 @@ class CarteraController extends Controller
         }
 
         // Protegemos la operación dentro de una transacción
-        DB::transaction(function () use ($request) {
+        DB::transaction(function () use ($request, $venta) {
             // Creamos el gasto en la BD
 
             $cartera = Cartera::find($request->cartera_id);
             $fecha = Carbon::parse($request->fecha)->format('Y-m-d');
             $pago = Pago::create([
                 'cartera_id' => $request->cartera_id,
+                'venta_id' => $request->venta_id,
                 'fecha' => $fecha,
                 'caja_id' => $request->caja_id,
                 'tipo_pago_id' => $request->tipo_pago_id,
@@ -84,6 +121,11 @@ class CarteraController extends Controller
                 'saldo' => $cartera->saldo - $request->valor,
                 'abonos' => $cartera->abonos + $request->valor,
             ]);
+
+            if ($venta) {
+                $this->actualizarVentaPorPago($venta, (float) $request->valor);
+            }
+
             $cartera->detalles()->create([
                 'cartera_id' => $cartera->id,
                 'total' => $cartera->total,
@@ -132,7 +174,7 @@ class CarteraController extends Controller
 
         // Si falla la validación
         if ($validator->fails()) {
-            return response()->json(['error' => $validator->messages()], 400);
+            return response()->json(['error' => $validator->errors()], 400);
         }
 // Validamos que el saldo no sea mayor al total
         if ($request->saldo > $request->total) {
@@ -204,18 +246,41 @@ class CarteraController extends Controller
         $this->model::actualizarCartera($id);
         // Buscamos el gasto
         $cartera = $this->model::with(['cliente', 'detalles', 'pagos', 'pagos.tipoPago'])->find($id);
-        $ventas=Venta::select('id','fecha','total')
+
+        // Evita N+1: actualiza en bloque los saldos vacios con el total de la venta.
+        Venta::where('cliente_id', $cartera->cliente_id)
+            ->where('forma_venta', 2)
+            ->where('cartera_id', $cartera->id)
+            ->where('estado', 1)
+            ->where(function ($query) {
+                $query->whereNull('abono')
+                    ->orWhere('abono', 0);
+            })
+            ->update([
+                'saldo' => DB::raw('total'),
+                'abono' => null,
+            ]);
+
+        $ventas=Venta::select('id','fecha','total', 'abono','saldo')
         ->where('cliente_id',$cartera->cliente_id)
         ->where('forma_venta',2)
         ->where('cartera_id',$cartera->id)
         ->where('estado',1)
+        ->where('saldo', '>', 0)
         ->orderBy('id','asc')
         ->get();
+
+
+
         if(!$ventas->count()){
-            $ventas=Venta::select('id','fecha','total')
+            $ventas=Venta::select('id','fecha','total', 'abono','saldo')
             ->where('cliente_id',$cartera->cliente_id)
             ->where('forma_venta',2)
             ->where('estado',1)
+            ->where(function ($query) {
+                $query->where('saldo', '>', 0)
+                    ->orWhereNull('saldo');
+            })
             ->orderBy('id','asc')
             ->get();
         }
@@ -252,7 +317,7 @@ class CarteraController extends Controller
 
         // Si falla la validación error.
         if ($validator->fails()) {
-            return response()->json(['error' => $validator->messages()], 400);
+            return response()->json(['error' => $validator->errors()], 400);
         }
 
         // Buscamos el gasto
@@ -321,7 +386,7 @@ class CarteraController extends Controller
 
         // Si falla la validación error.
         if ($validator->fails()) {
-            return response()->json(['error' => $validator->messages()], 400);
+            return response()->json(['error' => $validator->errors()], 400);
         }
 
         // Buscamos el gasto
@@ -409,6 +474,85 @@ class CarteraController extends Controller
 
     }
 
+    public function aplicarPagosFacturas(Request $request)
+    {
+        $data = $request->only('cartera_id');
+        $validator = Validator::make($data, [
+            'cartera_id' => 'required|exists:cartera,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()], 400);
+        }
+
+        $cartera = Cartera::find($request->cartera_id);
+        if (!$cartera) {
+            return response()->json([
+                'code' => 404,
+                'isSuccess' => false,
+                'message' => 'Cartera no encontrada',
+            ], Response::HTTP_OK);
+        }
+
+        $totalPagos = (float) Pago::where('cartera_id', $cartera->id)->sum('valor');
+
+        $ventas = Venta::where('cliente_id', $cartera->cliente_id)
+            ->where('forma_venta', 2)
+            ->where('estado', 1)
+            ->where('cartera_id', $cartera->id)
+            ->whereNull('abono')
+            ->orderBy('fecha', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        if (!$ventas->count()) {
+            $ventas = Venta::where('cliente_id', $cartera->cliente_id)
+                ->where('forma_venta', 2)
+                ->where('estado', 1)
+                ->whereNull('abono')
+                ->orderBy('fecha', 'asc')
+                ->orderBy('id', 'asc')
+                ->get();
+        }
+
+        $totalFacturas = (float) $ventas->sum('total');
+        $restante = $totalPagos;
+        $facturasActualizadas = 0;
+
+        DB::transaction(function () use ($ventas, &$restante, &$facturasActualizadas) {
+            foreach ($ventas as $venta) {
+                if ($restante <= 0) {
+                    break;
+                }
+
+                $totalVenta = (float) $venta->total;
+                $abonoAplicado = min($totalVenta, max(0, $restante));
+                $saldoPendiente = max(0, $totalVenta - $abonoAplicado);
+
+                $venta->update([
+                    'abono' => $abonoAplicado,
+                    'saldo' => $saldoPendiente,
+                ]);
+
+                $restante -= $abonoAplicado;
+                $facturasActualizadas++;
+            }
+        });
+
+        return response()->json([
+            'code' => 200,
+            'isSuccess' => true,
+            'message' => 'Pagos aplicados a facturas exitosamente',
+            'data' => [
+                'cartera_id' => $cartera->id,
+                'total_pagos' => $totalPagos,
+                'total_facturas' => $totalFacturas,
+                'restante_sin_aplicar' => max(0, $restante),
+                'facturas_actualizadas' => $facturasActualizadas,
+            ],
+        ], Response::HTTP_OK);
+    }
+
 public function destroyPago($id)
 {
     // Protegemos la operación dentro de una transacción
@@ -436,6 +580,13 @@ public function destroyPago($id)
             ]);
         }
 
+        if ($pago->venta_id) {
+            $venta = Venta::find($pago->venta_id);
+            if ($venta) {
+                $this->actualizarVentaPorPago($venta, (float) $pago->valor, true);
+            }
+        }
+
         // Eliminamos el pago
         $pago->delete();
     });
@@ -448,6 +599,12 @@ public function destroyPago($id)
     ], Response::HTTP_OK);
 }
 
-
+    private function actualizarVentaPorPago(Venta $venta, float $valor, bool $revertir = false): void
+    {
+        $venta->update([
+            'abono' => $revertir ? max(0, $venta->abono - $valor) : $venta->abono + $valor,
+            'saldo' => $revertir ? $venta->saldo + $valor : max(0, $venta->saldo - $valor),
+        ]);
+    }
 
 }

@@ -17,6 +17,8 @@ class Venta extends Model
         'forma_venta',
         'fecha',
         'total',
+        'abono',
+        'saldo',
         'cantidad',
         'cartera_id',
         'observaciones',
@@ -50,7 +52,7 @@ class Venta extends Model
 
     public static function getAll()
     {
-        return self::with(['detalles.producto', 'user', 'pagos.tipopago'])
+        return self::with(['detalles.producto', 'pagos.tipopago'])
             ->orderByDesc('id')
             ->get();
     }

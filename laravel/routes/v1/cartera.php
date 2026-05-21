@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
         Route::get('carteras-activos', [CarteraController::class, 'activos']);
         Route::post('carteras-filter', [CarteraController::class, 'filter']);
         Route::post('carteras-actualizar', [CarteraController::class, 'actualizarCartera']);
+        Route::post('carteras-aplicar-pagos-facturas', [CarteraController::class, 'aplicarPagosFacturas']);
         Route::delete('carteras-pagos/{id}', [CarteraController::class, 'destroyPago']);
 
 ?>

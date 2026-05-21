@@ -350,6 +350,7 @@ class VentaController extends Controller
                 }
                 $objeto->update([
                     'total' => $request->total,
+                    'saldo' => $request->forma_venta == 2 ? $request->total : 0,
                     'cliente_id'=>$request->cliente_id,
                     'cantidad' => $request->cantidad,
                     'observaciones'=>$request->observaciones,

@@ -324,20 +324,99 @@ class CompraController extends Controller
      * @param  \App\Models\Mesa  $mesa
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        // Buscamos la mesa
-        $objeto = $this->model::findOrFail($id);
+        try {
+            DB::beginTransaction();
 
-        // Eliminamos la mesa
-        $objeto->delete();
+            $objeto = $this->model::with('detalles')->lockForUpdate()->findOrFail($id);
+            $detalles = DetalleCompra::getDetalleByCompra($objeto->id);
 
-        // Devolvemos la respuesta
-        return response()->json([
-            'code' => 200,
-            'isSuccess' => true,
-            'message' => 'Mesa Eliminada Exitosamente'
-        ], Response::HTTP_OK);
+            // Solo revertimos inventario cuando la compra ya fue finalizada/facturada.
+            if ((int) $objeto->estado === 2 && count($detalles) > 0) {
+                foreach ($detalles as $detalle) {
+                    $cantidad = (float) $detalle->total_cantidad;
+
+                    $producto = Producto::lockForUpdate()->find($detalle->producto_id);
+                    if (!$producto) {
+                        throw new \RuntimeException('No se encontró el producto ID ' . $detalle->producto_id . ' para revertir inventario.');
+                    }
+
+                    $productoBodega = ProductoBodega::where('producto_id', $detalle->producto_id)
+                        ->where('bodega_id', $objeto->bodega_id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$productoBodega) {
+                        $productoBodega = ProductoBodega::create([
+                            'producto_id' => $detalle->producto_id,
+                            'bodega_id' => $objeto->bodega_id,
+                            'cantidad' => 0,
+                            'fecha' => now(),
+                        ]);
+                    }
+
+                    $nuevoSaldo = (float) $producto->stock_actual - $cantidad;
+
+                    MovimientoInventario::create([
+                        'producto_id' => $detalle->producto_id,
+                        'user_id' => $request->user_id ?? $objeto->user_id,
+                        'cantidad' => $cantidad,
+                        'precio_venta' => $detalle->precio_venta,
+                        'precio_compra' => $detalle->precio,
+                        'tipo' => '2',
+                        'descripcion' => 'SALIDA POR ELIMINACION COMPRA #' . $objeto->id,
+                        'fecha' => now(),
+                        'saldo' => $nuevoSaldo
+                    ]);
+
+                    $producto->update([
+                        'stock_actual' => $nuevoSaldo,
+                    ]);
+
+                    $productoBodega->update([
+                        'cantidad' => (float) $productoBodega->cantidad - $cantidad,
+                    ]);
+                }
+
+                // Si la compra era a crédito, revertimos su impacto en cartera.
+                if ((int) $objeto->forma_pago === 2) {
+                    CarteraCompra::descontarCartera($objeto->proveedor_id, $objeto->id, $objeto->total);
+                }
+
+                Operacion::where('tipo_operacion_id', 2)
+                    ->where('numero', $objeto->id)
+                    ->delete();
+            }
+
+            DetalleCompra::where('compra_id', $objeto->id)->delete();
+            $objeto->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'code' => 200,
+                'isSuccess' => true,
+                'message' => 'Compra y detalles eliminados exitosamente'
+            ], Response::HTTP_OK);
+        } catch (\RuntimeException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'code' => 400,
+                'isSuccess' => false,
+                'message' => $e->getMessage()
+            ], Response::HTTP_BAD_REQUEST);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'code' => 500,
+                'isSuccess' => false,
+                'message' => $e->getMessage(),
+                'line' => $e->getLine()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function destroyDetalle($id)

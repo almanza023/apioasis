@@ -12,6 +12,7 @@ class Pago extends Model
     protected $fillable = [
         'cartera_id',
         'tipo_pago_id',
+        'venta_id',
         'caja_id',
         'fecha',
         'valor',
@@ -32,6 +33,11 @@ class Pago extends Model
     public function tipoPago()
     {
         return $this->belongsTo(TipoPago::class, 'tipo_pago_id');
+    }
+
+    public function venta()
+    {
+        return $this->belongsTo(Venta::class, 'venta_id');
     }
 
     public static function getTotalByDate($caja_id){
